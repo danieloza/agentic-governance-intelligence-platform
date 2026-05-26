@@ -72,8 +72,12 @@ def test_dashboard_shell_contains_all_sidebar_sections(client):
 
     assert response.status_code == 200
     html = response.text
-    assert "Automation Control Plane" in html
-    assert "Agent Runtime Control Tower" in html
-    assert "LLM Incident Review Console" in html
-    assert "Agent Regression Lab" in html
-    assert "Inference Readiness Advisor" in html
+    assert "Governance Overview" in html
+    assert "Agents" in html
+    assert "Tool Gateway" in html
+    assert "Policy Decisions" in html
+    assert "Incidents" in html
+    assert "Regression Lab" in html
+    assert "Audit Explorer" in html
+    assert "OpenAPI Console" in html
+    assert "Observability" in html

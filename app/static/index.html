@@ -3,14 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AGIP Control Tower</title>
-    <link rel="stylesheet" href="/static/dashboard.css?v=20260526-7" />
+    <title>AGIP Operator Dashboard</title>
+    <link rel="stylesheet" href="/static/dashboard.css?v=20260527-operator" />
   </head>
   <body>
     <div class="app-shell">
-      <aside class="sidebar" aria-label="Platform navigation">
+      <aside class="sidebar" aria-label="AGIP navigation">
         <a class="brand" href="#overview" data-view="overview" aria-label="AGIP overview">
-          <span class="brand-mark">AG</span>
+          <span class="brand-mark" aria-hidden="true">◇</span>
           <span>
             <strong>AGIP</strong>
             <small>Agentic Governance Intelligence Platform</small>
@@ -18,28 +18,16 @@
         </a>
 
         <nav class="nav-stack">
-          <button class="nav-item active" data-view="overview"><span>CT</span>Control Tower</button>
-
-          <p class="nav-label">Governance Layer</p>
-          <button class="nav-item" data-view="governance"><span>GG</span>Agent Governance Gateway</button>
-          <button class="nav-item" data-view="mcp"><span>MS</span>MCP Security Gateway</button>
-          <button class="nav-item" data-view="automation"><span>AC</span>Automation Control Plane</button>
-
-          <p class="nav-label">Runtime / Operations</p>
-          <button class="nav-item" data-view="runtime"><span>RT</span>Agent Runtime Control Tower</button>
-          <button class="nav-item" data-view="incidents"><span>IR</span>LLM Incident Review Console</button>
-          <button class="nav-item" data-view="regression"><span>RL</span>Agent Regression Lab</button>
-
-          <p class="nav-label">Intelligence Layer</p>
-          <button class="nav-item" data-view="brand"><span>BI</span>Brand Insight Engine</button>
-          <button class="nav-item" data-view="intel"><span>IM</span>Agent Intel MCP</button>
-          <button class="nav-item" data-view="readiness"><span>IA</span>Inference Readiness Advisor</button>
-
-          <p class="nav-label">Shared Platform</p>
-          <button class="nav-item" data-view="shared"><span>SP</span>Shared Controls</button>
-          <button class="nav-item" data-view="graph"><span>GR</span>Graph Relationships</button>
-          <button class="nav-item" data-view="audit"><span>AL</span>Audit Logs</button>
-          <a class="nav-item link-item" href="/docs"><span>API</span>OpenAPI Docs</a>
+          <p class="nav-label">Operator Console</p>
+          <button class="nav-item active" data-view="overview"><span>⌂</span>Governance Overview</button>
+          <button class="nav-item" data-view="agents"><span>◎</span>Agents</button>
+          <button class="nav-item" data-view="tools"><span>⌘</span>Tool Gateway</button>
+          <button class="nav-item" data-view="policies"><span>◫</span>Policy Decisions</button>
+          <button class="nav-item" data-view="incidents"><span>△</span>Incidents</button>
+          <button class="nav-item" data-view="regression"><span>▱</span>Regression Lab</button>
+          <button class="nav-item" data-view="audit"><span>≣</span>Audit Explorer</button>
+          <button class="nav-item" data-view="openapi"><span>{ }</span>OpenAPI Console</button>
+          <button class="nav-item" data-view="observability"><span>⌁</span>Observability</button>
         </nav>
 
         <div class="operator-card">
@@ -47,6 +35,7 @@
           <div>
             <strong>Daniel Danek</strong>
             <small>Platform Operator</small>
+            <span class="online-dot">Online</span>
           </div>
         </div>
       </aside>
@@ -55,46 +44,31 @@
         <header class="topbar">
           <div>
             <div class="title-row">
-              <h1 id="view-title">Control Tower</h1>
-              <span class="version-pill">v2.0</span>
+              <h1 id="view-title">Governance Overview</h1>
+              <span class="version-pill">v2.1</span>
             </div>
-            <p id="view-subtitle">Overview of governance, runtime operations and intelligence workflows.</p>
+            <p id="view-subtitle">Monitor governed agents, scoped tools, policy decisions and runtime evidence.</p>
           </div>
           <div class="topbar-actions">
+            <div class="status-strip" aria-label="System status">
+              <span>Environment <b id="env-value">local</b></span>
+              <span>Policy <b id="policy-value">loading</b></span>
+              <span>Health <b id="health-value">checking</b></span>
+            </div>
             <label class="search-box">
-              <span>Search</span>
-              <input id="global-search" type="search" placeholder="Search agents, incidents, scopes..." />
+              <span>⌕</span>
+              <input id="global-search" type="search" placeholder="Search agents, incidents, policies..." />
             </label>
             <button class="icon-button" id="refresh-button" type="button" aria-label="Refresh dashboard">↻</button>
             <a class="docs-button" href="/docs">API Docs</a>
           </div>
         </header>
 
-        <section class="metric-grid" id="metric-grid" aria-label="Platform metrics"></section>
-
-        <section class="architecture-panel" id="architecture-panel">
-          <div class="section-heading">
-            <div>
-              <h2>Platform Architecture</h2>
-              <p>Connected modules grouped by governance, runtime, intelligence and shared control layers.</p>
-            </div>
-            <button class="secondary-button" data-view-jump="graph" type="button">View Graph Map</button>
-          </div>
-          <div class="architecture-flow" id="architecture-flow"></div>
-        </section>
-
-        <section class="view-grid" id="view-grid"></section>
+        <section class="metric-grid" id="metric-grid" aria-label="AGIP metrics"></section>
+        <section class="view-grid" id="view-grid" aria-live="polite"></section>
       </main>
     </div>
 
-    <div class="drawer-backdrop hidden" id="drawer-backdrop"></div>
-    <aside class="drawer hidden" id="drawer" aria-hidden="true">
-      <button class="drawer-close" type="button" id="drawer-close">Close</button>
-      <p id="drawer-eyebrow"></p>
-      <h2 id="drawer-title"></h2>
-      <div id="drawer-body"></div>
-    </aside>
-
-    <script src="/static/dashboard.js?v=20260526-7"></script>
+    <script src="/static/dashboard.js?v=20260527-operator"></script>
   </body>
 </html>
