@@ -8,6 +8,7 @@ Agentic Governance Intelligence Platform is one FastAPI control plane with four 
 3. Domain tools: business tools, MCP tools, brand intelligence tools
 4. Runtime runs, incidents, regression and observability
 5. Audit and relationship graph
+6. Enterprise governance layers: simulation, sandbox, memory, cost, inference, trust, forensics and context governance
 ```
 
 ## Runtime Flow
@@ -130,3 +131,24 @@ The natural next steps are:
 - durable run replay storage
 - richer incident triage workflow
 - scheduled regression suites
+
+## Enterprise Layer Map
+
+AGIP is intentionally shaped as an AI infrastructure control plane, not a single AI app. The `/enterprise/*` surfaces model the next layer of enterprise needs:
+
+```text
+AGIP
+├─ Governance Layer
+├─ Runtime Layer
+├─ Intelligence Layer
+├─ Security Layer
+├─ Observability Layer
+├─ Oversight Layer
+├─ Sandbox Layer
+├─ Inference Layer
+├─ Cost Layer
+├─ Context Governance Layer
+└─ Shared Platform Layer
+```
+
+The most important extension is `Policy Simulation Studio`: operators can dry-run a tool call, proposed token scopes and policy version before deploying a change. That creates a safer path for human approval, blast-radius analysis and controlled rollout.

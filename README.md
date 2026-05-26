@@ -63,6 +63,9 @@ This project is designed as a portfolio-grade backend and platform prototype. It
 - audit logging for allowed and denied actions
 - PII and secret redaction
 - graph-based explainability
+- policy simulation and dry-run previews
+- memory, context, sandbox, inference and cost governance surfaces
+- agent trust scoring and replay/forensics previews
 - runtime run tracking
 - incident review APIs
 - regression lab checks
@@ -109,6 +112,25 @@ This project is designed as a portfolio-grade backend and platform prototype. It
 | Incidents | Review console API for denied, high-risk or redacted events. |
 | Regression Lab | Policy regression cases for allowed/denied tool behavior. |
 | Observability | Summary metrics for agents, tool calls, incidents, scopes and redaction. |
+
+## Enterprise Governance Layers
+
+AGIP also exposes a second enterprise layer for the problems that appear before autonomous agents are trusted in production:
+
+| Layer | Purpose |
+| --- | --- |
+| Policy Simulation Studio | Dry-run tool calls, proposed scopes and policy changes before rollout. |
+| Agent Memory Governance | Memory TTL, isolation, redaction and retention policy controls. |
+| Human Oversight Center | Approval inbox, escalation queue, manual overrides and review chains. |
+| Sandbox Execution Layer | Filesystem, network, command and resource boundaries for coding agents. |
+| Cost & Token Intelligence | Token usage, model cost, anomalies, budget thresholds and run breakdowns. |
+| Inference Router | Provider and model routing by policy, latency, fallback and cost. |
+| Agent Trust Engine | Risk scoring from incidents, scope sensitivity and approval frequency. |
+| Replay & Forensics Studio | Timeline reconstruction for incidents, denied calls and policy decisions. |
+| Organizations Layer | Tenant policies, workspace separation and per-org audit controls. |
+| Knowledge & Context Governance | Approved sources, RAG audit, retrieval logging and document sensitivity. |
+
+These surfaces are available through `/enterprise/layers` and related `/enterprise/*` endpoints. The MVP keeps them local-first and mock-safe, while the architecture shows how AGIP grows from a governance gateway into an AI infrastructure platform.
 
 ## Screenshots
 

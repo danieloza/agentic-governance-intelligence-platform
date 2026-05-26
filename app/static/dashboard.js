@@ -9,6 +9,7 @@ const state = {
   incidents: [],
   regressionCases: [],
   platformRegression: null,
+  enterprise: null,
   openapi: null,
 };
 
@@ -53,7 +54,7 @@ async function bootstrap() {
 }
 
 async function refreshData() {
-  const [manifest, overview, observability, agents, audit, incidents, regressionCases, platformRegression, openapi] =
+  const [manifest, overview, observability, agents, audit, incidents, regressionCases, platformRegression, enterprise, openapi] =
     await Promise.all([
       loadJson("/.well-known/agent-auth.json", {}),
       loadJson("/platform/overview", {}),
@@ -63,6 +64,7 @@ async function refreshData() {
       loadJson("/incidents", []),
       loadJson("/regression/cases", []),
       loadJson("/platform/regression", { runs: [], metrics: {} }),
+      loadJson("/enterprise/layers", { layers: [], summary: {} }),
       loadJson("/openapi.json", { paths: {} }),
     ]);
 
@@ -74,6 +76,7 @@ async function refreshData() {
   state.incidents = incidents;
   state.regressionCases = regressionCases;
   state.platformRegression = platformRegression;
+  state.enterprise = enterprise;
   state.openapi = openapi;
   renderStatus();
   renderMetrics();
@@ -177,6 +180,7 @@ function renderOverview() {
     panel("Live Policy Preview", livePolicyPreview(), ""),
     panel("Tool Call Timeline", timeline(toolLogs().slice(0, 8)), ""),
     panel("Policy Decision Panel", policyDecisionPanel(), "panel-wide"),
+    panel("Enterprise Layers", enterpriseLayers(), "panel-wide"),
     panel("Incident Severity", incidentCards(), ""),
     panel("Regression Test Results", regressionPreview(), ""),
     panel("Audit Log Explorer", auditPreview(), "panel-wide"),
@@ -327,11 +331,13 @@ function livePolicyPreview() {
   const sampleTool = "finance.get_invoice_summary";
   const required = "finance:invoice:read";
   const hasAgent = state.agents.some((agent) => (agent.approved_scopes || []).includes(required));
+  const simulation = state.enterprise?.layers?.find((layer) => layer.key === "policy-simulation-studio");
   const rows = [
     ["Tool mapping", sampleTool, "required scope exists"],
     ["Default deny", "enabled", "unknown tools blocked"],
     ["Human approval", hasAgent ? "satisfied" : "missing", "agent must be approved"],
     ["PII redaction", "enabled", "responses and logs are masked"],
+    ["Policy simulation", simulation?.maturity || "MVP", simulation?.summary || "dry-run policies before rollout"],
   ];
   return `<div class="policy-preview">${rows.map(([title, value, meta]) => `
     <div class="preview-row">
@@ -339,6 +345,28 @@ function livePolicyPreview() {
       <span class="chip ${value === "missing" ? "high" : "allowed"}">${escapeHtml(value)}</span>
     </div>
   `).join("")}</div>`;
+}
+
+function enterpriseLayers() {
+  const layers = state.enterprise?.layers || [];
+  if (!layers.length) return `<div class="empty">Enterprise layer metadata is not available yet.</div>`;
+  return `
+    <div class="enterprise-grid">
+      ${layers.map((layer) => `
+        <article class="enterprise-card">
+          <div class="enterprise-top">
+            <strong>${escapeHtml(layer.name)}</strong>
+            ${chip(layer.status)}
+          </div>
+          <p>${escapeHtml(layer.summary)}</p>
+          <div class="mini-list">
+            ${(layer.capabilities || []).slice(0, 4).map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
+          </div>
+          <small>${escapeHtml(layer.layer)} / ${escapeHtml(layer.maturity)} / ${escapeHtml(layer.route)}</small>
+        </article>
+      `).join("")}
+    </div>
+  `;
 }
 
 function policyDecisionPanel() {
@@ -526,12 +554,15 @@ function primaryFlow() {
 
 function observabilityGrid() {
   const o = state.observability || {};
+  const enterprise = state.enterprise?.summary || {};
   return `
     <div class="policy-preview">
       <div class="preview-row"><div><strong>Total Agents</strong><small>registered identities</small></div><span class="metric-value info">${o.total_agents ?? 0}</span></div>
       <div class="preview-row"><div><strong>Allowed Tool Calls</strong><small>policy approved executions</small></div><span class="metric-value good">${o.allowed_tool_calls ?? 0}</span></div>
       <div class="preview-row"><div><strong>Denied Tool Calls</strong><small>blocked by governance</small></div><span class="metric-value bad">${o.denied_tool_calls ?? 0}</span></div>
       <div class="preview-row"><div><strong>High Risk Events</strong><small>audit events with high risk</small></div><span class="metric-value warn">${o.high_risk_events ?? 0}</span></div>
+      <div class="preview-row"><div><strong>Enterprise Layers</strong><small>simulation, memory, sandbox, cost, inference and context governance</small></div><span class="metric-value violet">${enterprise.total_layers ?? 0}</span></div>
+      <div class="preview-row"><div><strong>Available Layers</strong><small>implemented MVP surfaces</small></div><span class="metric-value good">${enterprise.available_layers ?? 0}</span></div>
     </div>
   `;
 }
