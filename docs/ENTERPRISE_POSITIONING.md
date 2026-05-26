@@ -10,6 +10,7 @@ It is designed for internal automation scenarios such as:
 - Operations agents creating reports
 - Marketing agents analyzing brand and competitor signals
 - MCP clients invoking tools through a controlled gateway
+- Developer/coding agents reading repository context, proposing patches and running tests through scoped tools
 
 The main enterprise concerns are:
 
@@ -23,5 +24,8 @@ The main enterprise concerns are:
 - policy enforcement
 - explainability through a relationship graph
 - workflow safety
+- runtime visibility
+- incident review
+- regression testing before rollout
 
 This is not a chatbot. It is the control plane around agentic systems that need to touch business tools safely.

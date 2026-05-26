@@ -17,6 +17,9 @@ VALID_SCOPES = [
     "mcp:approval:write",
     "brand:insight:read",
     "brand:report:create",
+    "dev:repo:read",
+    "dev:patch:propose",
+    "dev:test:run",
 ]
 
 
@@ -31,6 +34,8 @@ class ManifestPolicyRules(BaseModel):
 
 
 class AgentAuthManifest(BaseModel):
+    service_name: str
+    issuer: str
     auth_flows_supported: list[str]
     credential_type: str
     token_endpoint: str
@@ -109,6 +114,7 @@ class AuditLogResponse(BaseModel):
     requested_scope: str | None
     decision: str
     reason: str
+    risk_level: str
     policy_version: str
     pii_redacted: bool
     latency_ms: int | None
@@ -121,6 +127,7 @@ class AuditLogFilters(BaseModel):
     tool_name: str | None = None
     scope: str | None = None
     user_id: str | None = None
+    risk_level: str | None = None
 
 
 class ToolResponse(BaseModel):
@@ -129,6 +136,124 @@ class ToolResponse(BaseModel):
     policy_version: str
     pii_redacted: bool
     data: dict[str, Any]
+
+
+class DevReadRepoFileRequest(BaseModel):
+    path: str = Field(min_length=1, max_length=300)
+
+
+class DevProposePatchRequest(BaseModel):
+    path: str = Field(min_length=1, max_length=300)
+    patch_summary: str = Field(min_length=5, max_length=500)
+
+
+class DevRunTestRequest(BaseModel):
+    test_command: str = Field(default="pytest -q", min_length=2, max_length=200)
+
+
+class RunStartRequest(BaseModel):
+    agent_id: int
+    objective: str = Field(min_length=5, max_length=1000)
+
+
+class RunFinishRequest(BaseModel):
+    status: Literal["completed", "failed", "blocked"]
+    risk_score: float = Field(default=0.0, ge=0, le=100)
+
+
+class RunResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    tenant_id: str
+    agent_id: int
+    objective: str
+    status: str
+    started_at: datetime
+    finished_at: datetime | None
+    risk_score: float
+    tool_call_count: int
+    blocked_call_count: int
+
+
+class IncidentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    tenant_id: str
+    agent_id: int
+    run_id: int | None
+    related_tool_call_id: int | None
+    severity: str
+    title: str
+    description: str
+    policy_reason: str
+    status: str
+    created_at: datetime
+    resolved_at: datetime | None
+
+
+class IncidentResolveRequest(BaseModel):
+    resolved_by: str = Field(min_length=2, max_length=255)
+    resolution_note: str = Field(min_length=3, max_length=1000)
+
+
+class RegressionCaseRequest(BaseModel):
+    tenant_id: str = Field(default="local", min_length=2, max_length=120)
+    name: str = Field(min_length=2, max_length=255)
+    agent_type: str = Field(min_length=2, max_length=100)
+    requested_tool: str = Field(min_length=2, max_length=160)
+    token_scopes: list[str] = Field(default_factory=list)
+    expected_decision: Literal["allowed", "denied"]
+    expected_reason_contains: str = Field(min_length=1, max_length=255)
+
+
+class RegressionCaseResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    tenant_id: str
+    name: str
+    agent_type: str
+    requested_tool: str
+    token_scopes: str
+    expected_decision: str
+    expected_reason_contains: str
+    created_at: datetime
+
+
+class RegressionRunRequest(BaseModel):
+    tenant_id: str | None = Field(default=None, max_length=120)
+
+
+class RegressionCaseResult(BaseModel):
+    case_id: int
+    name: str
+    expected_decision: str
+    actual_decision: str
+    reason: str
+    passed: bool
+
+
+class RegressionRunResponse(BaseModel):
+    total_cases: int
+    passed: int
+    failed: int
+    results: list[RegressionCaseResult]
+
+
+class ObservabilitySummary(BaseModel):
+    total_agents: int
+    approved_agents: int
+    revoked_agents: int
+    total_tool_calls: int
+    allowed_tool_calls: int
+    denied_tool_calls: int
+    open_incidents: int
+    high_risk_events: int
+    redaction_events: int
+    most_used_tools: list[dict[str, Any]]
+    most_requested_scopes: list[dict[str, Any]]
 
 
 class GraphEdgeResponse(BaseModel):

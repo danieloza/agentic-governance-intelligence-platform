@@ -9,9 +9,9 @@
 [![CI](https://img.shields.io/badge/CI-passing-16A34A?style=for-the-badge)](.github/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/LICENSE-MIT-0F172A?style=for-the-badge)](LICENSE)
 
-**Agentic Governance Intelligence Platform** is a FastAPI-based control plane for governed enterprise AI agents.
+**AGIP is a local-first AI governance platform for autonomous agents. It provides scoped access, policy enforcement, human approvals, audit logs, redaction, incidents, regression checks and observability for AI agents before they interact with business or developer tools.**
 
-It combines scoped agent authentication, MCP tool security, workflow approvals, runtime monitoring, incident review, regression checks, brand intelligence, PII/secret redaction, audit logs and graph-based traceability.
+Main positioning: **Govern, observe and secure autonomous AI agents before they touch business systems.**
 
 This is **not a chatbot**. It is the governance, security and operations layer around AI agents that need to use business tools safely.
 
@@ -43,6 +43,9 @@ AI Agent
   -> Policy engine
   -> PII / secret redaction
   -> Audit log
+  -> Incident review
+  -> Regression checks
+  -> Observability
   -> Relationship graph
   -> Operator dashboard
 ```
@@ -60,8 +63,12 @@ This project is designed as a portfolio-grade backend and platform prototype. It
 - audit logging for allowed and denied actions
 - PII and secret redaction
 - graph-based explainability
+- runtime run tracking
+- incident review APIs
+- regression lab checks
+- observability summaries for dashboard views
 - operator-facing dashboard over real backend data
-- pytest coverage for auth, approval, revocation, policy, tools, graph and redaction
+- pytest coverage for auth, approval, revocation, policy, tools, graph, runs, incidents, regression, observability and redaction
 
 ## Platform Modules
 
@@ -98,6 +105,10 @@ This project is designed as a portfolio-grade backend and platform prototype. It
 | PII / Secret Redaction | Masks sensitive fields before responses and logs. |
 | Audit Logs | Reviewable event history for registrations, approvals, tokens, revocations and tool calls. |
 | Graph Relationships | Explainable edges across agents, scopes, tools and outputs. |
+| Runs | Runtime tracking for objectives, status, risk score and blocked calls. |
+| Incidents | Review console API for denied, high-risk or redacted events. |
+| Regression Lab | Policy regression cases for allowed/denied tool behavior. |
+| Observability | Summary metrics for agents, tool calls, incidents, scopes and redaction. |
 
 ## Screenshots
 
@@ -166,6 +177,11 @@ This project is designed as a portfolio-grade backend and platform prototype. It
                               |
                               v
                 +---------------------------+
+                | Incidents / Regression    |
+                +-------------+-------------+
+                              |
+                              v
+                +---------------------------+
                 |  Relationship Graph       |
                 +-------------+-------------+
                               |
@@ -189,6 +205,8 @@ Every important action is auditable:
 - invalid scope attempt
 - MCP invocation
 - Brand Insight decision
+- run start and finish
+- incident resolution
 
 The graph layer turns runtime decisions into explainable relationships:
 
@@ -222,6 +240,9 @@ Was anything redacted?
 
 ### Tool Gateway
 
+- `POST /tools/dev/read_repo_file`
+- `POST /tools/dev/propose_patch`
+- `POST /tools/dev/run_test`
 - `POST /tools/hr/search_employee_policy`
 - `POST /tools/finance/get_invoice_summary`
 - `POST /tools/finance/create_expense_review`
@@ -231,6 +252,20 @@ Was anything redacted?
 - `POST /tools/mcp/invoke_tool`
 - `POST /tools/brand/analyze_market_signals`
 - `POST /tools/brand/create_report`
+
+### Runs, Incidents, Regression, Observability
+
+- `POST /runs/start`
+- `POST /runs/{run_id}/finish`
+- `GET /runs`
+- `GET /runs/{run_id}`
+- `GET /incidents`
+- `GET /incidents/{incident_id}`
+- `POST /incidents/{incident_id}/resolve`
+- `POST /regression/cases`
+- `GET /regression/cases`
+- `POST /regression/run`
+- `GET /observability/summary`
 
 ### Platform Dashboard APIs
 
@@ -252,12 +287,15 @@ This is the core story to show in an interview or portfolio walkthrough:
 1. A new agent registers and requests scopes.
 2. An admin approves only the scopes that are justified.
 3. The agent receives a short-lived scoped JWT.
-4. The agent tries to call a governed tool.
-5. The policy engine checks approval, revocation, tenant boundary and required scope.
-6. The response is redacted.
-7. The decision is written to audit logs.
-8. A graph edge explains the relationship between agent, scope, tool and output.
-9. The dashboard shows activity, incidents, audit logs and graph relationships.
+4. The agent starts a run with a clear objective.
+5. The agent tries to call a governed tool.
+6. The policy engine checks approval, revocation, tenant boundary and required scope.
+7. The response is redacted.
+8. The decision is written to audit logs and tool-call records.
+9. Denied calls create incidents for operator review.
+10. Regression cases validate expected policy behavior.
+11. A graph edge explains the relationship between agent, scope, tool and output.
+12. The dashboard shows activity, incidents, audit logs, metrics and graph relationships.
 
 ## Local Setup
 
@@ -295,6 +333,11 @@ Current test suite covers:
 - audit log creation
 - PII and secret redaction
 - dashboard/platform endpoints
+- run start/finish
+- incident creation and resolution
+- regression pass/fail
+- observability summary
+- governed developer-tool access
 
 ## Curl Walkthrough
 
@@ -350,13 +393,62 @@ curl -X POST http://127.0.0.1:8015/tools/brand/analyze_market_signals \
   }'
 ```
 
-### 5. Inspect Audit Logs
+### 5. Start A Run
+
+```bash
+curl -X POST http://127.0.0.1:8015/runs/start \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_id": 1,
+    "objective": "Analyze market signals through governed tools"
+  }'
+```
+
+### 6. Call Denied Tool
+
+```bash
+curl -X POST http://127.0.0.1:8015/tools/legal/search_contract_clause \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "X-Tenant-ID: enterprise-marketing" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contract_id": "MSA-001",
+    "clause_query": "termination"
+  }'
+```
+
+### 7. Inspect Audit Logs
 
 ```bash
 curl http://127.0.0.1:8015/agent-auth/audit
 ```
 
-### 6. Inspect Graph Edges
+### 8. Inspect Incidents
+
+```bash
+curl http://127.0.0.1:8015/incidents
+```
+
+### 9. Run Regression Lab
+
+```bash
+curl -X POST http://127.0.0.1:8015/regression/run \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+### 10. Revoke Agent
+
+```bash
+curl -X POST http://127.0.0.1:8015/agent-auth/revoke/1 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "revoked_by": "platform.admin",
+    "reason": "Token access no longer required"
+  }'
+```
+
+### 11. Inspect Graph Edges
 
 ```bash
 curl http://127.0.0.1:8015/graph/edges
@@ -374,6 +466,10 @@ agentic-governance-intelligence-platform/
     graph.py
     audit.py
     redaction.py
+    runs.py
+    incidents.py
+    regression.py
+    observability.py
     platform.py
     models.py
     schemas.py
@@ -385,6 +481,8 @@ agentic-governance-intelligence-platform/
       dashboard.js
   docs/
     ARCHITECTURE.md
+    PRODUCT_VISION.md
+    API_FLOW.md
     ENTERPRISE_POSITIONING.md
     screenshots/
   examples/

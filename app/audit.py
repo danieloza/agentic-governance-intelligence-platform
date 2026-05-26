@@ -17,6 +17,7 @@ def write_audit_log(
     reason: str,
     tool_name: str | None = None,
     requested_scope: str | None = None,
+    risk_level: str = "low",
     pii_redacted: bool = True,
     latency_ms: int | None = None,
 ) -> AuditLog:
@@ -30,6 +31,7 @@ def write_audit_log(
         requested_scope=requested_scope,
         decision=decision,
         reason=reason,
+        risk_level=risk_level,
         policy_version=settings.policy_version,
         pii_redacted=pii_redacted,
         latency_ms=latency_ms,

@@ -17,7 +17,18 @@ from app.auth import create_scoped_token, get_tenant_header, get_token_payload
 from app.config import get_settings
 from app.database import Base, engine, get_db
 from app.graph import list_graph_edges, record_governed_tool_call
-from app.models import Agent, ApprovalRecord, AuditLog, GraphEdge
+from app.incidents import create_incident, router as incidents_router
+from app.models import (
+    Agent,
+    AgentCredential,
+    AgentScope,
+    ApprovalRecord,
+    AuditLog,
+    GraphEdge,
+    PolicyDecisionRecord,
+    ToolCall,
+)
+from app.observability import router as observability_router
 from app.policies import TOOL_SCOPE_MAP, evaluate_tool_access
 from app.platform import (
     build_automation_detail,
@@ -31,6 +42,8 @@ from app.platform import (
     build_runtime_detail,
 )
 from app.redaction import redact_pii
+from app.regression import router as regression_router
+from app.runs import router as runs_router
 from app.schemas import (
     AgentAuthManifest,
     AgentRegistrationRequest,
@@ -46,6 +59,9 @@ from app.schemas import (
     InvoiceSummaryRequest,
     ContractClauseRequest,
     ContractRiskRequest,
+    DevProposePatchRequest,
+    DevReadRepoFileRequest,
+    DevRunTestRequest,
     ManifestPolicyRules,
     McpToolInvocationRequest,
     OpsReportRequest,
@@ -61,6 +77,9 @@ from app.tools import (
     finance_get_invoice_summary,
     brand_analyze_market_signals,
     brand_create_report,
+    dev_propose_patch,
+    dev_read_repo_file,
+    dev_run_test,
     hr_search_employee_policy,
     legal_search_contract_clause,
     legal_summarize_contract_risk,
@@ -74,6 +93,7 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     Base.metadata.create_all(bind=engine)
+    ensure_sqlite_schema_compatibility()
     if settings.demo_seed_enabled and settings.environment != "test":
         seed_demo_data()
     yield
@@ -90,6 +110,19 @@ app = FastAPI(
 )
 STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+app.include_router(runs_router)
+app.include_router(incidents_router)
+app.include_router(regression_router)
+app.include_router(observability_router)
+
+
+def ensure_sqlite_schema_compatibility() -> None:
+    if not settings.database_url.startswith("sqlite"):
+        return
+    with engine.begin() as connection:
+        columns = {row[1] for row in connection.exec_driver_sql("PRAGMA table_info(audit_logs)").fetchall()}
+        if columns and "risk_level" not in columns:
+            connection.exec_driver_sql("ALTER TABLE audit_logs ADD COLUMN risk_level VARCHAR(30) NOT NULL DEFAULT 'low'")
 
 
 def ensure_utc(dt: datetime | None) -> datetime | None:
@@ -405,6 +438,68 @@ def validate_scopes(scopes: list[str], *, tenant_id: str | None, agent_id: int |
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"invalid_scopes": invalid})
 
 
+def record_policy_decision(
+    db: Session,
+    *,
+    tenant_id: str | None,
+    agent_id: int | None,
+    tool_name: str,
+    required_scope: str,
+    allowed: bool,
+    reason: str,
+    risk_level: str,
+    pii_redaction_required: bool,
+) -> PolicyDecisionRecord:
+    record = PolicyDecisionRecord(
+        tenant_id=tenant_id,
+        agent_id=agent_id,
+        tool_name=tool_name,
+        required_scope=required_scope,
+        allowed=allowed,
+        reason=reason,
+        risk_level=risk_level,
+        policy_version=settings.policy_version,
+        pii_redaction_required=pii_redaction_required,
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return record
+
+
+def record_tool_call(
+    db: Session,
+    *,
+    tenant_id: str,
+    agent_id: int,
+    tool_name: str,
+    required_scope: str,
+    decision: str,
+    reason: str,
+    risk_level: str,
+    pii_redacted: bool,
+    latency_ms: int | None = None,
+    output_preview: str | None = None,
+) -> ToolCall:
+    call = ToolCall(
+        tenant_id=tenant_id,
+        agent_id=agent_id,
+        tool_name=tool_name,
+        required_scope=required_scope,
+        decision=decision,
+        reason=reason,
+        risk_level=risk_level,
+        policy_version=settings.policy_version,
+        pii_redacted=pii_redacted,
+        latency_ms=latency_ms,
+        output_preview=output_preview,
+    )
+    db.add(call)
+    db.commit()
+    db.refresh(call)
+    return call
+
+
 def build_tool_response(
     *,
     tool_name: str,
@@ -418,6 +513,18 @@ def build_tool_response(
 ) -> ToolResponse:
     redacted_payload = redact_pii(payload)
     if db is not None and tenant_id is not None and agent is not None:
+        record_tool_call(
+            db,
+            tenant_id=tenant_id,
+            agent_id=agent.id,
+            tool_name=tool_name,
+            required_scope=required_scope,
+            decision="allowed",
+            reason="allowed",
+            risk_level="high" if tool_name in {"dev.propose_patch", "dev.run_test", "mcp.invoke_tool", "brand.create_report"} else "medium" if tool_name.startswith(("finance.", "legal.")) else "low",
+            pii_redacted=True,
+            output_preview=str(redacted_payload)[:600],
+        )
         record_governed_tool_call(
             db,
             tenant_id=tenant_id,
@@ -458,6 +565,17 @@ def enforce_tool_policy(
     token_tenant_id = token_payload.get("tenant_id")
 
     if token_tenant_id != tenant_id:
+        record_policy_decision(
+            db,
+            tenant_id=token_tenant_id,
+            agent_id=agent_id,
+            tool_name=tool_name,
+            required_scope=TOOL_SCOPE_MAP.get(tool_name) or "",
+            allowed=False,
+            reason="default_deny: request tenant does not match token tenant",
+            risk_level="high",
+            pii_redaction_required=True,
+        )
         write_audit_log(
             db,
             tenant_id=token_tenant_id,
@@ -468,10 +586,35 @@ def enforce_tool_policy(
             requested_scope=TOOL_SCOPE_MAP.get(tool_name),
             decision="denied",
             reason="default_deny: request tenant does not match token tenant",
+            risk_level="high",
+            pii_redacted=True,
+            latency_ms=latency_ms,
+        )
+        record_tool_call(
+            db,
+            tenant_id=token_tenant_id or tenant_id,
+            agent_id=agent_id,
+            tool_name=tool_name,
+            required_scope=TOOL_SCOPE_MAP.get(tool_name) or "",
+            decision="denied",
+            reason="default_deny: request tenant does not match token tenant",
+            risk_level="high",
             pii_redacted=True,
             latency_ms=latency_ms,
         )
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="default_deny: request tenant does not match token tenant")
+
+    record_policy_decision(
+        db,
+        tenant_id=token_tenant_id,
+        agent_id=agent_id,
+        tool_name=tool_name,
+        required_scope=decision.required_scope,
+        allowed=decision.allowed,
+        reason=decision.reason,
+        risk_level=decision.risk_level,
+        pii_redaction_required=decision.pii_redaction_required,
+    )
 
     if not decision.allowed:
         action = "policy_failure" if "default_deny" in decision.reason else "denied_tool_call"
@@ -485,9 +628,33 @@ def enforce_tool_policy(
             requested_scope=decision.required_scope,
             decision="denied",
             reason=decision.reason,
+            risk_level=decision.risk_level,
             pii_redacted=decision.pii_redaction_required,
             latency_ms=latency_ms,
         )
+        tool_call = record_tool_call(
+            db,
+            tenant_id=token_tenant_id,
+            agent_id=agent_id,
+            tool_name=tool_name,
+            required_scope=decision.required_scope,
+            decision="denied",
+            reason=decision.reason,
+            risk_level=decision.risk_level,
+            pii_redacted=decision.pii_redaction_required,
+            latency_ms=latency_ms,
+        )
+        if agent is not None:
+            create_incident(
+                db,
+                tenant_id=token_tenant_id,
+                agent_id=agent_id,
+                severity=decision.risk_level,
+                title=f"Denied tool call: {tool_name}",
+                description=f"Agent {agent.agent_name} was denied access to {tool_name}.",
+                policy_reason=decision.reason,
+                related_tool_call_id=tool_call.id,
+            )
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=decision.reason)
 
     write_audit_log(
@@ -500,6 +667,7 @@ def enforce_tool_policy(
         requested_scope=decision.required_scope,
         decision="allowed",
         reason=decision.reason,
+        risk_level=decision.risk_level,
         pii_redacted=decision.pii_redaction_required,
         latency_ms=latency_ms,
     )
@@ -687,6 +855,8 @@ def dashboard_recent_activity(db: Session = Depends(get_db)) -> dict:
 @app.get("/.well-known/agent-auth.json", response_model=AgentAuthManifest, tags=["agent-auth"])
 def get_manifest() -> AgentAuthManifest:
     return AgentAuthManifest(
+        service_name="AGIP Agent Auth",
+        issuer=settings.app_name,
         auth_flows_supported=["agent_registration", "human_approval", "scoped_jwt_token"],
         credential_type="jwt",
         token_endpoint="/agent-auth/token",
@@ -722,6 +892,16 @@ def register_agent(payload: AgentRegistrationRequest, db: Session = Depends(get_
     db.add(agent)
     db.commit()
     db.refresh(agent)
+    db.add_all(
+        AgentScope(
+            tenant_id=agent.tenant_id,
+            agent_id=agent.id,
+            scope=scope,
+            status="requested",
+        )
+        for scope in payload.requested_scopes
+    )
+    db.commit()
 
     write_audit_log(
         db,
@@ -760,6 +940,15 @@ def approve_agent(agent_id: int, payload: ApprovalRequest, db: Session = Depends
         expires_at=expires_at,
     )
     db.add(record)
+    for scope in payload.approved_scopes:
+        db.add(
+            AgentScope(
+                tenant_id=agent.tenant_id,
+                agent_id=agent.id,
+                scope=scope,
+                status="approved",
+            )
+        )
     db.commit()
     db.refresh(agent)
 
@@ -823,6 +1012,15 @@ def issue_token(payload: TokenRequest, db: Session = Depends(get_db)) -> TokenRe
         scopes=approved_scopes,
         expires_in_hours=expires_in_hours,
     )
+    credential = AgentCredential(
+        tenant_id=agent.tenant_id,
+        agent_id=agent.id,
+        credential_type="jwt",
+        scopes=",".join(approved_scopes),
+        expires_at=expires_at,
+    )
+    db.add(credential)
+    db.commit()
     write_audit_log(
         db,
         tenant_id=agent.tenant_id,
@@ -866,6 +1064,7 @@ def get_audit_logs(
     tool_name: str | None = Query(default=None),
     scope: str | None = Query(default=None),
     user_id: str | None = Query(default=None),
+    risk_level: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> list[AuditLog]:
     query = select(AuditLog).order_by(AuditLog.timestamp.desc(), AuditLog.id.desc())
@@ -881,6 +1080,8 @@ def get_audit_logs(
         query = query.where(AuditLog.requested_scope == scope)
     if user_id:
         query = query.where(AuditLog.owner_user_id == user_id)
+    if risk_level:
+        query = query.where(AuditLog.risk_level == risk_level)
     return list(db.scalars(query).all())
 
 
@@ -1001,6 +1202,68 @@ def tool_ops_create_report(
         agent=agent,
         output_type="ops_report",
         output_id=payload.report_name,
+    )
+
+
+@app.post("/tools/dev/read_repo_file", response_model=ToolResponse, tags=["Tool Gateway"])
+def tool_dev_read_repo_file(
+    payload: DevReadRepoFileRequest,
+    token_payload: dict = Depends(get_token_payload),
+    tenant_id: str = Depends(get_tenant_header),
+    db: Session = Depends(get_db),
+) -> ToolResponse:
+    agent, scope = enforce_tool_policy(tool_name="dev.read_repo_file", token_payload=token_payload, tenant_id=tenant_id, db=db)
+    return build_tool_response(
+        tool_name="dev.read_repo_file",
+        required_scope=scope,
+        payload=dev_read_repo_file(payload.path),
+        db=db,
+        tenant_id=tenant_id,
+        agent=agent,
+        output_type="repo_file_preview",
+        output_id=payload.path,
+    )
+
+
+@app.post("/tools/dev/propose_patch", response_model=ToolResponse, tags=["Tool Gateway"])
+def tool_dev_propose_patch(
+    payload: DevProposePatchRequest,
+    token_payload: dict = Depends(get_token_payload),
+    tenant_id: str = Depends(get_tenant_header),
+    db: Session = Depends(get_db),
+) -> ToolResponse:
+    agent, scope = enforce_tool_policy(tool_name="dev.propose_patch", token_payload=token_payload, tenant_id=tenant_id, db=db)
+    tool_payload = dev_propose_patch(payload.path, payload.patch_summary)
+    return build_tool_response(
+        tool_name="dev.propose_patch",
+        required_scope=scope,
+        payload=tool_payload,
+        db=db,
+        tenant_id=tenant_id,
+        agent=agent,
+        output_type="patch_proposal",
+        output_id=tool_payload["patch_id"],
+    )
+
+
+@app.post("/tools/dev/run_test", response_model=ToolResponse, tags=["Tool Gateway"])
+def tool_dev_run_test(
+    payload: DevRunTestRequest,
+    token_payload: dict = Depends(get_token_payload),
+    tenant_id: str = Depends(get_tenant_header),
+    db: Session = Depends(get_db),
+) -> ToolResponse:
+    agent, scope = enforce_tool_policy(tool_name="dev.run_test", token_payload=token_payload, tenant_id=tenant_id, db=db)
+    tool_payload = dev_run_test(payload.test_command)
+    return build_tool_response(
+        tool_name="dev.run_test",
+        required_scope=scope,
+        payload=tool_payload,
+        db=db,
+        tenant_id=tenant_id,
+        agent=agent,
+        output_type="test_run",
+        output_id=tool_payload["run_id"],
     )
 
 

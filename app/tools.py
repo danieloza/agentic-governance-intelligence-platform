@@ -166,3 +166,34 @@ def brand_create_report(*, brand_name: str, report_name: str, insight_ids: list[
             "email": "product.marketing@company.example",
         },
     }
+
+
+def dev_read_repo_file(path: str) -> dict[str, Any]:
+    return {
+        "path": path,
+        "mode": "mock_read_only",
+        "content_excerpt": "Mock repository file preview returned through the governed tool gateway.",
+        "sensitive_notice": "Raw secrets, tokens and credentials are not returned by this tool.",
+    }
+
+
+def dev_propose_patch(path: str, patch_summary: str) -> dict[str, Any]:
+    return {
+        "path": path,
+        "patch_id": f"PATCH-{abs(hash((path, patch_summary))) % 100000:05d}",
+        "status": "proposed_for_human_review",
+        "patch_summary": patch_summary,
+        "requires_approval": True,
+        "operator_note": "Patch proposal is captured as a reviewable artifact; the gateway does not apply changes directly.",
+    }
+
+
+def dev_run_test(test_command: str) -> dict[str, Any]:
+    return {
+        "test_command": test_command,
+        "run_id": f"TEST-{abs(hash(test_command)) % 100000:05d}",
+        "status": "completed",
+        "passed": True,
+        "summary": "Mock test execution completed through controlled dev tooling.",
+        "logs": "12 passed, 0 failed",
+    }
