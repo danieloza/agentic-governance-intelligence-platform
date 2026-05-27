@@ -9,13 +9,13 @@
 [![CI](https://img.shields.io/badge/CI-passing-16A34A?style=for-the-badge)](.github/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/LICENSE-MIT-0F172A?style=for-the-badge)](LICENSE)
 
-**AGIP is a local-first AI governance platform for autonomous agents. It provides scoped access, policy enforcement, human approvals, audit logs, redaction, incidents, regression checks and observability for AI agents before they interact with business or developer tools.**
+**AGIP is a local-first AI governance platform for autonomous agents, providing scoped access, policy simulation, approvals, audit logs, redaction, incidents, regression testing, observability, inference readiness and enterprise governance layers before agents touch business systems.**
 
 Main positioning: **Govern, observe and secure autonomous AI agents before they touch business systems.**
 
 This is **not a chatbot**. It is the governance, security and operations layer around AI agents that need to use business tools safely.
 
-![AGIP overview](docs/screenshots/overview.png)
+![AGIP overview](docs/screenshots/overview-enterprise-layers.png)
 
 ## Product Thesis
 
@@ -134,33 +134,29 @@ These surfaces are available through `/enterprise/layers` and related `/enterpri
 
 ## Screenshots
 
-### Control Tower
+### Overview / Enterprise Layers
 
-![Control Tower](docs/screenshots/overview.png)
+![Overview / Enterprise Layers](docs/screenshots/overview-enterprise-layers.png)
 
-### MCP Security Gateway
+### Policy Simulation Studio
 
-![MCP Security Gateway](docs/screenshots/mcp-security-gateway.png)
+![Policy Simulation Studio](docs/screenshots/policy-simulation-studio.png)
 
-### Automation Control Plane
+### Audit Explorer
 
-![Automation Control Plane](docs/screenshots/automation-control-plane.png)
+![Audit Explorer](docs/screenshots/audit-explorer.png)
 
-### Brand Insight Engine
+### Incidents
 
-![Brand Insight Engine](docs/screenshots/brand-insight-engine.png)
+![Incidents](docs/screenshots/incidents.png)
 
-### Incident Review Console
+### Regression Lab
 
-![Incident Review Console](docs/screenshots/incident-review-console.png)
+![Regression Lab](docs/screenshots/regression-lab.png)
 
-### Relationship Graph
+### Observability
 
-![Relationship Graph](docs/screenshots/relationship-graph.png)
-
-### Audit Logs
-
-![Audit Logs](docs/screenshots/audit-logs.png)
+![Observability](docs/screenshots/observability.png)
 
 ## Architecture
 
@@ -289,6 +285,20 @@ Was anything redacted?
 - `POST /regression/run`
 - `GET /observability/summary`
 
+### Enterprise Layers
+
+- `GET /enterprise/layers`
+- `POST /enterprise/policy/simulate`
+- `GET /enterprise/memory/policies`
+- `GET /enterprise/oversight/queue`
+- `GET /enterprise/sandbox/profile`
+- `GET /enterprise/cost/summary`
+- `GET /enterprise/inference/routes`
+- `GET /enterprise/trust/summary`
+- `GET /enterprise/forensics/timeline`
+- `GET /enterprise/orgs/summary`
+- `GET /enterprise/context/sources`
+
 ### Platform Dashboard APIs
 
 - `GET /platform/overview`
@@ -302,22 +312,20 @@ Was anything redacted?
 - `GET /graph/edges`
 - `GET /graph/agents/{agent_id}/explain`
 
-## Example Demo Flow
+## Demo Flow
 
 This is the core story to show in an interview or portfolio walkthrough:
 
-1. A new agent registers and requests scopes.
-2. An admin approves only the scopes that are justified.
-3. The agent receives a short-lived scoped JWT.
-4. The agent starts a run with a clear objective.
-5. The agent tries to call a governed tool.
-6. The policy engine checks approval, revocation, tenant boundary and required scope.
-7. The response is redacted.
-8. The decision is written to audit logs and tool-call records.
-9. Denied calls create incidents for operator review.
-10. Regression cases validate expected policy behavior.
-11. A graph edge explains the relationship between agent, scope, tool and output.
-12. The dashboard shows activity, incidents, audit logs, metrics and graph relationships.
+1. Register agent
+2. Approve scopes
+3. Issue scoped token
+4. Run policy simulation
+5. Execute allowed tool call
+6. Trigger denied/high-risk tool call
+7. Review incident
+8. Check audit log
+9. View enterprise layers
+10. Run regression lab
 
 ## Local Setup
 
@@ -398,7 +406,21 @@ curl -X POST http://127.0.0.1:8015/agent-auth/token \
   -d '{"agent_id": 1}'
 ```
 
-### 4. Call Governed Brand Insight Tool
+### 4. Run Policy Simulation
+
+```bash
+curl -X POST http://127.0.0.1:8015/enterprise/policy/simulate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_id": 1,
+    "tenant_id": "enterprise-marketing",
+    "tool_name": "brand.analyze_market_signals",
+    "token_scopes": ["brand:insight:read"],
+    "dry_run": true
+  }'
+```
+
+### 5. Call Governed Brand Insight Tool
 
 ```bash
 curl -X POST http://127.0.0.1:8015/tools/brand/analyze_market_signals \
@@ -415,7 +437,7 @@ curl -X POST http://127.0.0.1:8015/tools/brand/analyze_market_signals \
   }'
 ```
 
-### 5. Start A Run
+### 6. Start A Run
 
 ```bash
 curl -X POST http://127.0.0.1:8015/runs/start \
@@ -426,7 +448,7 @@ curl -X POST http://127.0.0.1:8015/runs/start \
   }'
 ```
 
-### 6. Call Denied Tool
+### 7. Call Denied Tool
 
 ```bash
 curl -X POST http://127.0.0.1:8015/tools/legal/search_contract_clause \
@@ -439,19 +461,25 @@ curl -X POST http://127.0.0.1:8015/tools/legal/search_contract_clause \
   }'
 ```
 
-### 7. Inspect Audit Logs
-
-```bash
-curl http://127.0.0.1:8015/agent-auth/audit
-```
-
 ### 8. Inspect Incidents
 
 ```bash
 curl http://127.0.0.1:8015/incidents
 ```
 
-### 9. Run Regression Lab
+### 9. Inspect Audit Logs
+
+```bash
+curl http://127.0.0.1:8015/agent-auth/audit
+```
+
+### 10. View Enterprise Layers
+
+```bash
+curl http://127.0.0.1:8015/enterprise/layers
+```
+
+### 11. Run Regression Lab
 
 ```bash
 curl -X POST http://127.0.0.1:8015/regression/run \
@@ -459,7 +487,7 @@ curl -X POST http://127.0.0.1:8015/regression/run \
   -d '{}'
 ```
 
-### 10. Revoke Agent
+### 12. Revoke Agent
 
 ```bash
 curl -X POST http://127.0.0.1:8015/agent-auth/revoke/1 \
@@ -470,7 +498,7 @@ curl -X POST http://127.0.0.1:8015/agent-auth/revoke/1 \
   }'
 ```
 
-### 11. Inspect Graph Edges
+### 13. Inspect Graph Edges
 
 ```bash
 curl http://127.0.0.1:8015/graph/edges
