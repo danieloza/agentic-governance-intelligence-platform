@@ -152,3 +152,29 @@ AGIP
 ```
 
 The most important extension is `Policy Simulation Studio`: operators can dry-run a tool call, proposed token scopes and policy version before deploying a change. That creates a safer path for human approval, blast-radius analysis and controlled rollout.
+
+# LangGraph orchestration
+
+AGIP keeps authorization deterministic in `app.policies.evaluate_tool_access` and uses LangGraph as an orchestration layer around that policy boundary.
+
+The governed workflow in `app.langgraph_workflow` models:
+
+1. policy evaluation;
+2. conditional routing by allow/deny and risk level;
+3. a human approval interrupt for high-risk tools;
+4. resume with an explicit operator decision;
+5. tool execution or denial;
+6. audit, tool-call and relationship-graph persistence.
+
+This separation is intentional: LangGraph controls workflow state and transitions, while the existing policy engine remains independently testable and reusable outside the graph.
+
+```text
+evaluate_policy
+  |-- denied ------------------------> record_policy_denial
+  |-- allowed + low/medium risk ----> execute_tool
+  `-- allowed + high risk ----------> interrupt(human approval)
+                                        |-- approved -> execute_tool
+                                        `-- rejected -> record_human_denial
+```
+
+The local MVP compiles the graph with `MemorySaver`. Production should use a durable checkpointer and idempotency controls around side-effecting nodes.

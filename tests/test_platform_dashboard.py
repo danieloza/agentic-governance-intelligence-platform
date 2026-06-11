@@ -81,3 +81,5 @@ def test_dashboard_shell_contains_all_sidebar_sections(client):
     assert "Audit Explorer" in html
     assert "OpenAPI Console" in html
     assert "Observability" in html
+    assert 'aria-label="Global search"' in html
+    assert 'id="search-results"' in html

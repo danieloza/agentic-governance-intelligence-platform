@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AGIP Operator Dashboard</title>
-    <link rel="stylesheet" href="/static/dashboard.css?v=20260527-operator" />
+    <link rel="stylesheet" href="/static/dashboard.css?v=20260612-search-dropdown" />
   </head>
   <body>
     <div class="app-shell">
@@ -19,6 +19,7 @@
 
         <nav class="nav-stack">
           <p class="nav-label">Operator Console</p>
+          <button class="nav-item" data-view="langgraph"><span>LG</span>LangGraph Flow</button>
           <button class="nav-item active" data-view="overview"><span>⌂</span>Governance Overview</button>
           <button class="nav-item" data-view="agents"><span>◎</span>Agents</button>
           <button class="nav-item" data-view="tools"><span>⌘</span>Tool Gateway</button>
@@ -55,10 +56,22 @@
               <span>Policy <b id="policy-value">loading</b></span>
               <span>Health <b id="health-value">checking</b></span>
             </div>
-            <label class="search-box">
-              <span>⌕</span>
-              <input id="global-search" type="search" placeholder="Search agents, incidents, policies..." />
-            </label>
+            <div class="global-search">
+              <label class="search-box" for="global-search">
+                <span aria-hidden="true">⌕</span>
+                <input
+                  id="global-search"
+                  type="search"
+                  placeholder="Search platform..."
+                  autocomplete="off"
+                  aria-label="Global search"
+                  aria-controls="search-results"
+                  aria-expanded="false"
+                />
+                <kbd>Ctrl K</kbd>
+              </label>
+              <div class="search-results" id="search-results" role="listbox" aria-label="Global search results"></div>
+            </div>
             <button class="icon-button" id="refresh-button" type="button" aria-label="Refresh dashboard">↻</button>
             <a class="docs-button" href="/docs">API Docs</a>
           </div>
@@ -69,6 +82,6 @@
       </main>
     </div>
 
-    <script src="/static/dashboard.js?v=20260527-operator"></script>
+    <script src="/static/dashboard.js?v=20260612-search-dropdown"></script>
   </body>
 </html>

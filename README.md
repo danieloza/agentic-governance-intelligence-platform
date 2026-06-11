@@ -72,6 +72,7 @@ This project is designed as a portfolio-grade backend and platform prototype. It
 - observability summaries for dashboard views
 - operator-facing dashboard over real backend data
 - pytest coverage for auth, approval, revocation, policy, tools, graph, runs, incidents, regression, observability and redaction
+- LangGraph orchestration for governed tool workflows with conditional routing, checkpoint inspection and human approval interrupts
 
 ## Platform Modules
 
@@ -208,6 +209,47 @@ These surfaces are available through `/enterprise/layers` and related `/enterpri
                 |  Operator Dashboard       |
                 +---------------------------+
 ```
+
+## LangGraph Governed Workflow
+
+AGIP includes a real LangGraph orchestration layer for high-risk tool execution. The graph reuses the deterministic AGIP policy engine rather than hiding authorization inside an LLM prompt.
+
+```text
+START
+  -> evaluate_policy
+       -> denied -------------> record_policy_denial -> END
+       -> low / medium risk --> execute_tool ---------> END
+       -> high risk ----------> request_human_approval
+                                    -> approved ------> execute_tool -> END
+                                    -> rejected ------> record_human_denial -> END
+```
+
+The high-risk branch uses LangGraph `interrupt()` to pause execution and checkpoint workflow state. An operator can inspect the pending request and resume the same thread with an approve or reject decision.
+
+The workflow demonstrates:
+
+- explicit typed graph state
+- conditional edges based on policy and risk
+- human-in-the-loop pause and resume
+- checkpoint inspection by `thread_id`
+- reuse of scoped auth and the default-deny policy engine
+- redacted tool outputs
+- persisted policy decisions, tool calls, audit logs and relationship graph edges
+
+### LangGraph API
+
+- `GET /workflows/langgraph` - describe nodes, routes and capabilities
+- `POST /workflows/langgraph/start` - start a governed tool workflow
+- `GET /workflows/langgraph/{thread_id}` - inspect a workflow checkpoint
+- `POST /workflows/langgraph/{thread_id}/resume` - approve or reject a paused high-risk workflow
+
+Run the complete approval demo after starting FastAPI:
+
+```bash
+python examples/langgraph_approval_demo.py
+```
+
+The current MVP uses LangGraph `MemorySaver` for local-first demonstrations. A production deployment would replace it with a durable database-backed checkpointer so interrupted workflows survive process restarts.
 
 ## Auditability And Graph Traceability
 

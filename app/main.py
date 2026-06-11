@@ -19,6 +19,7 @@ from app.database import Base, engine, get_db
 from app.enterprise import router as enterprise_router
 from app.graph import list_graph_edges, record_governed_tool_call
 from app.incidents import create_incident, router as incidents_router
+from app.langgraph_workflow import router as langgraph_workflow_router
 from app.models import (
     Agent,
     AgentCredential,
@@ -116,6 +117,7 @@ app.include_router(incidents_router)
 app.include_router(regression_router)
 app.include_router(observability_router)
 app.include_router(enterprise_router)
+app.include_router(langgraph_workflow_router)
 
 
 def ensure_sqlite_schema_compatibility() -> None:

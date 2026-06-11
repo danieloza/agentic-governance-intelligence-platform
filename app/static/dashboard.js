@@ -10,6 +10,7 @@ const state = {
   regressionCases: [],
   platformRegression: null,
   enterprise: null,
+  langgraph: null,
   openapi: null,
 };
 
@@ -20,6 +21,7 @@ const viewMeta = {
   policies: ["Policy Decisions", "Default-deny decisions, required scopes, reasons and live policy preview."],
   incidents: ["Incidents", "Denied, risky or redacted events prepared for operator review."],
   regression: ["Regression Lab", "Scenario checks that validate expected allow/deny behavior before rollout."],
+  langgraph: ["LangGraph Flow", "Stateful policy routing, checkpoint inspection and human-in-the-loop approval."],
   audit: ["Audit Explorer", "Reviewable evidence stream for registrations, approvals, tokens and tool calls."],
   openapi: ["OpenAPI Console", "Endpoint explorer generated from the FastAPI OpenAPI schema."],
   observability: ["Observability", "Aggregate health, tool-call, incident, redaction and scope metrics."],
@@ -54,7 +56,7 @@ async function bootstrap() {
 }
 
 async function refreshData() {
-  const [manifest, overview, observability, agents, audit, incidents, regressionCases, platformRegression, enterprise, openapi] =
+  const [manifest, overview, observability, agents, audit, incidents, regressionCases, platformRegression, enterprise, langgraph, openapi] =
     await Promise.all([
       loadJson("/.well-known/agent-auth.json", {}),
       loadJson("/platform/overview", {}),
@@ -65,6 +67,7 @@ async function refreshData() {
       loadJson("/regression/cases", []),
       loadJson("/platform/regression", { runs: [], metrics: {} }),
       loadJson("/enterprise/layers", { layers: [], summary: {} }),
+      loadJson("/workflows/langgraph", { nodes: [], routes: [], capabilities: [] }),
       loadJson("/openapi.json", { paths: {} }),
     ]);
 
@@ -77,6 +80,7 @@ async function refreshData() {
   state.regressionCases = regressionCases;
   state.platformRegression = platformRegression;
   state.enterprise = enterprise;
+  state.langgraph = langgraph;
   state.openapi = openapi;
   renderStatus();
   renderMetrics();
@@ -95,9 +99,129 @@ function bindEvents() {
   });
   qs("global-search").addEventListener("input", (event) => {
     state.search = event.target.value.trim().toLowerCase();
-    setView(state.currentView, { replaceHash: true });
+    renderSearchResults();
+  });
+  qs("global-search").addEventListener("focus", openSearch);
+  qs("global-search").addEventListener("click", openSearch);
+  qs("global-search").addEventListener("keydown", (event) => {
+    if (event.key === "Escape") clearSearch();
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      qs("search-results").querySelector(".search-result")?.focus();
+    }
+  });
+  qs("search-results").addEventListener("click", (event) => {
+    const result = event.target.closest("[data-search-view]");
+    if (!result) return;
+    selectSearchResult(result.dataset.searchView, result.dataset.searchQuery || "");
+  });
+  qs("search-results").addEventListener("keydown", (event) => {
+    if (!["ArrowDown", "ArrowUp"].includes(event.key)) return;
+    event.preventDefault();
+    const results = [...qs("search-results").querySelectorAll(".search-result")];
+    const current = results.indexOf(document.activeElement);
+    const next = event.key === "ArrowDown" ? Math.min(current + 1, results.length - 1) : Math.max(current - 1, 0);
+    results[next]?.focus();
+  });
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest(".global-search")) closeSearchResults();
+  });
+  document.addEventListener("keydown", (event) => {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+      event.preventDefault();
+      openSearch();
+    } else if (event.key === "/" && !["INPUT", "TEXTAREA"].includes(document.activeElement.tagName)) {
+      event.preventDefault();
+      openSearch();
+    }
   });
   window.addEventListener("hashchange", () => setView(location.hash.replace("#", "") || "overview", { replaceHash: true }));
+}
+
+function openSearch() {
+  qs("search-results").classList.add("open");
+  renderSearchResults();
+  qs("global-search").focus();
+}
+
+function searchIndex() {
+  const views = Object.entries(viewMeta).map(([view, [title, subtitle]]) => ({
+    view, type: "View", title, detail: subtitle, query: "",
+  }));
+  const agents = state.agents.map((item) => ({
+    view: "agents", type: "Agent", title: item.agent_name, detail: `${item.status} · ${item.agent_type} · ${item.owner_user_id}`, query: item.agent_name,
+  }));
+  const incidents = state.incidents.map((item) => ({
+    view: "incidents", type: "Incident", title: item.title, detail: `${item.severity} · ${item.status} · ${item.policy_reason || ""}`, query: item.title,
+  }));
+  const audit = state.audit.map((item) => ({
+    view: "audit", type: "Audit", title: item.tool_name || item.action, detail: `${item.decision || "event"} · ${item.reason || ""}`, query: item.tool_name || item.action,
+  }));
+  const endpoints = Object.entries(state.openapi?.paths || {}).flatMap(([path, methods]) =>
+    Object.keys(methods).map((method) => ({
+      view: "openapi", type: "Endpoint", title: `${method.toUpperCase()} ${path}`, detail: methods[method].summary || methods[method].tags?.[0] || "FastAPI endpoint", query: path,
+    }))
+  );
+  const regression = state.regressionCases.map((item) => ({
+    view: "regression", type: "Regression", title: item.name, detail: `${item.expected_decision} · ${item.requested_tool}`, query: item.name,
+  }));
+  const graphNodes = (state.langgraph?.nodes || []).map((item) => ({
+    view: "langgraph", type: "LangGraph", title: item.id, detail: item.purpose, query: "",
+  }));
+  const items = [...views, ...agents, ...incidents, ...audit, ...endpoints, ...regression, ...graphNodes];
+  return [...new Map(items.map((item) => [`${item.view}|${item.type}|${item.title}|${item.detail}`, item])).values()];
+}
+
+function renderSearchResults() {
+  const container = qs("search-results");
+  const input = qs("global-search");
+  container.classList.add("open");
+  if (!state.search) {
+    container.innerHTML = `
+      <div class="search-empty">
+        Search agents, incidents, policies and API endpoints.
+        <span><kbd>/</kbd> focus · <kbd>Esc</kbd> clear</span>
+      </div>
+    `;
+    input.setAttribute("aria-expanded", "true");
+    return;
+  }
+
+  const terms = state.search.split(/\s+/).filter(Boolean);
+  const results = searchIndex()
+    .map((item) => ({ ...item, haystack: `${item.type} ${item.title} ${item.detail}`.toLowerCase() }))
+    .filter((item) => terms.every((term) => item.haystack.includes(term)))
+    .slice(0, 9);
+
+  container.innerHTML = results.length
+    ? results.map((item) => `
+      <button class="search-result" type="button" role="option" data-search-view="${escapeHtml(item.view)}" data-search-query="${escapeHtml(item.query)}">
+        <span class="search-result-type">${escapeHtml(item.type)}</span>
+        <span class="search-result-copy"><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.detail)}</small></span>
+        <span class="search-result-arrow">→</span>
+      </button>
+    `).join("")
+    : `<div class="search-empty">No matching entities or views.<span>Try a tool name, status, scope or endpoint.</span></div>`;
+  input.setAttribute("aria-expanded", "true");
+}
+
+function closeSearchResults() {
+  qs("search-results").classList.remove("open");
+  qs("global-search").setAttribute("aria-expanded", "false");
+}
+
+function clearSearch() {
+  state.search = "";
+  qs("global-search").value = "";
+  closeSearchResults();
+  setView(state.currentView, { replaceHash: true });
+}
+
+function selectSearchResult(view, query) {
+  state.search = query.toLowerCase();
+  qs("global-search").value = "";
+  closeSearchResults();
+  setView(view);
 }
 
 function setView(view, options = {}) {
@@ -146,6 +270,7 @@ function renderView(view) {
     policies: renderPolicies,
     incidents: renderIncidents,
     regression: renderRegression,
+    langgraph: renderLangGraph,
     audit: renderAudit,
     openapi: renderOpenApi,
     observability: renderObservability,
@@ -201,8 +326,8 @@ function renderTools() {
     .filter(([path]) => path.startsWith("/tools/"))
     .map(([path, methods]) => ({ path, method: Object.keys(methods)[0]?.toUpperCase() || "POST" }));
   return [
-    panel("Controlled Tool Gateway", endpointList(tools), "panel-wide"),
-    panel("Tool Call Timeline", timeline(toolLogs().slice(0, 10)), ""),
+    panel("Controlled Tool Gateway", endpointList(filtered(tools, ["path", "method"])), "panel-wide"),
+    panel("Tool Call Timeline", timeline(filtered(toolLogs(), ["tool_name", "requested_scope", "decision", "reason"]).slice(0, 10)), ""),
     panel("Gateway Controls", gatewayControls(), ""),
     panel("Most Used Tools", mostUsedTools(), "panel-wide"),
   ].join("");
@@ -212,13 +337,13 @@ function renderPolicies() {
   return [
     panel("Policy Decision Panel", policyDecisionPanel(), "panel-wide"),
     panel("Live Policy Preview", livePolicyPreview(), ""),
-    panel("Denied Decisions", auditTable(deniedLogs()), "panel-full"),
+    panel("Denied Decisions", auditTable(filtered(deniedLogs(), ["action", "tool_name", "requested_scope", "decision", "reason"])), "panel-full"),
   ].join("");
 }
 
 function renderIncidents() {
   const liveIncidents = state.incidents.length
-    ? state.incidents.map((item) => [item.title, item.severity, item.status, item.policy_reason])
+    ? filtered(state.incidents, ["title", "severity", "status", "policy_reason"]).map((item) => [item.title, item.severity, item.status, item.policy_reason])
     : (state.overview?.incidents || []).map((item) => [item.title, item.severity, "open", item.module]);
   return [
     panel("Incident Severity Cards", incidentCards(), "panel-wide"),
@@ -228,12 +353,43 @@ function renderIncidents() {
 }
 
 function renderRegression() {
-  const stored = state.regressionCases.map((item) => [item.name, item.requested_tool, item.expected_decision, item.expected_reason_contains]);
+  const stored = filtered(state.regressionCases, ["name", "requested_tool", "expected_decision", "expected_reason_contains"])
+    .map((item) => [item.name, item.requested_tool, item.expected_decision, item.expected_reason_contains]);
   const platform = (state.platformRegression?.runs || []).map((item) => [item.scenario, item.candidate, item.verdict, `${item.latency_delta}% latency`]);
   return [
     panel("Regression Test Results", regressionPreview(), ""),
     panel("Stored Regression Cases", table(["Name", "Requested Tool", "Expected", "Reason Contains"], stored), "panel-wide"),
     panel("Scenario History", table(["Scenario", "Candidate", "Verdict", "Delta"], platform), "panel-full"),
+  ].join("");
+}
+
+function renderLangGraph() {
+  const graph = state.langgraph || {};
+  const nodes = (graph.nodes || []).map((node) => `
+    <article class="enterprise-card">
+      <div class="enterprise-top"><strong>${escapeHtml(node.id)}</strong>${chip(node.id.includes("denial") ? "denied" : node.id.includes("approval") ? "pending" : "allowed")}</div>
+      <p>${escapeHtml(node.purpose)}</p>
+      <small>LangGraph node</small>
+    </article>
+  `).join("");
+  const routes = (graph.routes || []).map((route, index) => `
+    <div class="preview-row">
+      <div><strong>Route ${index + 1}</strong><small>${escapeHtml(route)}</small></div>
+      ${chip(route.includes("denied") || route.includes("rejected") ? "denied" : route.includes("high risk") ? "pending" : "allowed")}
+    </div>
+  `).join("");
+  const capabilities = (graph.capabilities || []).map((item) => [item, "enabled"]);
+  return [
+    panel("Governed Workflow Nodes", `<div class="enterprise-grid">${nodes}</div>`, "panel-wide"),
+    panel("Conditional Routes", `<div class="policy-preview">${routes}</div>`, ""),
+    panel("Runtime Contract", `
+      <div class="policy-preview">
+        <div class="preview-row"><div><strong>Runtime</strong><small>${escapeHtml(graph.runtime || "LangGraph")}</small></div>${chip("allowed")}</div>
+        <div class="preview-row"><div><strong>State</strong><small>${escapeHtml(graph.state_model || "GovernanceWorkflowState")}</small></div>${chip("info")}</div>
+        <div class="preview-row"><div><strong>Checkpointer</strong><small>${escapeHtml(graph.checkpointer || "not available")}</small></div>${chip("pending")}</div>
+      </div>
+    `, ""),
+    panel("Workflow Capabilities", table(["Capability", "Status"], capabilities), "panel-full"),
   ].join("");
 }
 
