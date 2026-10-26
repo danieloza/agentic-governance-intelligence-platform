@@ -586,16 +586,6 @@ agentic-governance-intelligence-platform/
   requirements.txt
 ```
 
-## Interview Framing
-
-Short version:
-
-> I built an Agentic Governance Intelligence Platform: a FastAPI control plane for enterprise AI agents that need scoped, auditable and revocable access to internal tools.
-
-Technical version:
-
-> The system combines agent registration, human approval, short-lived scoped JWTs, MCP tool governance, workflow approvals, PII/secret redaction, audit logs, incident review, regression checks, graph-based traceability and an operator dashboard. The core idea is that agents should never directly access sensitive systems. They should operate through a policy-enforced gateway that can explain, audit and revoke every action.
-
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
